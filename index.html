@@ -10,7 +10,7 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0f172a;
@@ -18,7 +18,7 @@
             padding: 20px;
             min-height: 100vh;
         }
-        
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -26,17 +26,17 @@
             border-radius: 12px;
             padding: 30px;
         }
-        
+
         h1 {
             font-size: 2rem;
             margin-bottom: 10px;
         }
-        
+
         .subtitle {
             color: #94a3b8;
             margin-bottom: 30px;
         }
-        
+
         .sequence-display {
             background: #334155;
             border-radius: 8px;
@@ -44,23 +44,23 @@
             margin-bottom: 30px;
             border: 2px solid #475569;
         }
-        
+
         .sequence-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }
-        
+
         .sequence-header h2 {
             font-size: 1.2rem;
         }
-        
+
         .sequence-length {
             color: #94a3b8;
             font-size: 0.9rem;
         }
-        
+
         .sequence-output {
             background: #0f172a;
             padding: 15px;
@@ -72,16 +72,35 @@
             overflow-y: auto;
             word-break: break-all;
         }
-        
+
+        .canvases-wrapper {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .canvas-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .canvas-section h3 {
+            color: white;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
         .canvas-container {
             background: #334155;
             padding: 20px;
             border-radius: 8px;
-            margin-bottom: 30px;
             display: flex;
             justify-content: center;
         }
-        
+
         canvas {
             border: 2px solid #475569;
             border-radius: 8px;
@@ -348,15 +367,23 @@
             </div>
         </div>
 
-        <!-- 3D Torus Canvas -->
-        <div class="canvas-container">
-            <canvas id="canvas" width="600" height="600"></canvas>
-        </div>
+        <!-- Both Canvases Side by Side -->
+        <div class="canvases-wrapper">
+            <!-- 3D Torus Canvas -->
+            <div class="canvas-section">
+                <h3>3D Torus</h3>
+                <div class="canvas-container">
+                    <canvas id="canvas" width="400" height="400"></canvas>
+                </div>
+            </div>
 
-        <!-- Unwrapped Torus View -->
-        <h3 style="color: white; margin: 20px 0 10px; font-size: 1.2rem;">Unwrapped Torus (Fundamental Domain)</h3>
-        <div class="canvas-container">
-            <canvas id="unwrappedCanvas" width="600" height="300"></canvas>
+            <!-- Unwrapped Torus View -->
+            <div class="canvas-section">
+                <h3>Unwrapped Torus (Fundamental Domain)</h3>
+                <div class="canvas-container">
+                    <canvas id="unwrappedCanvas" width="400" height="400"></canvas>
+                </div>
+            </div>
         </div>
 
         <!-- Mode Toggle -->
@@ -498,9 +525,9 @@
         };
 
         let animationId = null;
-        const CANVAS_SIZE = 600;
-        const R = 150; // Major radius
-        const r = 60;  // Minor radius
+        const CANVAS_SIZE = 400;
+        const R = 100; // Major radius
+        const r = 40;  // Minor radius
 
         // Recording variables
         let mediaRecorder = null;
@@ -512,8 +539,8 @@
         const unwrappedCanvas = document.getElementById('unwrappedCanvas');
         const unwrappedCtx = unwrappedCanvas.getContext('2d');
 
-        const UNWRAPPED_WIDTH = 600;
-        const UNWRAPPED_HEIGHT = 300;
+        const UNWRAPPED_WIDTH = 400;
+        const UNWRAPPED_HEIGHT = 400;
 
         // Helper functions
         function gcd(a, b) {
@@ -724,7 +751,7 @@
 
             // Draw particle
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 6, 0, Math.PI * 2);
+            ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
             ctx.fillStyle = state.completedCycle ? '#ef4444' : '#f59e0b';
             ctx.fill();
             ctx.strokeStyle = state.completedCycle ? '#f87171' : '#fbbf24';
@@ -742,40 +769,40 @@
 
             // Draw background rectangle with transparent blue
             unwrappedCtx.fillStyle = 'rgba(59, 130, 246, 0.1)';
-            unwrappedCtx.fillRect(20, 20, UNWRAPPED_WIDTH - 40, UNWRAPPED_HEIGHT - 40);
+            unwrappedCtx.fillRect(30, 30, UNWRAPPED_WIDTH - 60, UNWRAPPED_HEIGHT - 60);
 
             // Draw pink grid lines
             unwrappedCtx.strokeStyle = '#ec4899';
             unwrappedCtx.lineWidth = 0.5;
 
             const gridSize = 10;
-            const rectWidth = UNWRAPPED_WIDTH - 40;
-            const rectHeight = UNWRAPPED_HEIGHT - 40;
+            const rectWidth = UNWRAPPED_WIDTH - 60;
+            const rectHeight = UNWRAPPED_HEIGHT - 60;
 
             // Vertical lines
             for (let i = 0; i <= gridSize; i++) {
-                const x = 20 + (i * rectWidth / gridSize);
+                const x = 30 + (i * rectWidth / gridSize);
                 unwrappedCtx.beginPath();
-                unwrappedCtx.moveTo(x, 20);
-                unwrappedCtx.lineTo(x, UNWRAPPED_HEIGHT - 20);
+                unwrappedCtx.moveTo(x, 30);
+                unwrappedCtx.lineTo(x, UNWRAPPED_HEIGHT - 30);
                 unwrappedCtx.stroke();
             }
 
             // Horizontal lines
             for (let i = 0; i <= gridSize; i++) {
-                const y = 20 + (i * rectHeight / gridSize);
+                const y = 30 + (i * rectHeight / gridSize);
                 unwrappedCtx.beginPath();
-                unwrappedCtx.moveTo(20, y);
-                unwrappedCtx.lineTo(UNWRAPPED_WIDTH - 20, y);
+                unwrappedCtx.moveTo(30, y);
+                unwrappedCtx.lineTo(UNWRAPPED_WIDTH - 30, y);
                 unwrappedCtx.stroke();
             }
 
             // Draw labels
             unwrappedCtx.fillStyle = '#94a3b8';
-            unwrappedCtx.font = '12px sans-serif';
-            unwrappedCtx.fillText('θ₂ (major) →', UNWRAPPED_WIDTH / 2 - 30, UNWRAPPED_HEIGHT - 5);
+            unwrappedCtx.font = '11px sans-serif';
+            unwrappedCtx.fillText('θ₂ (major) →', UNWRAPPED_WIDTH / 2 - 30, UNWRAPPED_HEIGHT - 10);
             unwrappedCtx.save();
-            unwrappedCtx.translate(10, UNWRAPPED_HEIGHT / 2);
+            unwrappedCtx.translate(15, UNWRAPPED_HEIGHT / 2);
             unwrappedCtx.rotate(-Math.PI / 2);
             unwrappedCtx.fillText('θ₁ (minor) →', -30, 0);
             unwrappedCtx.restore();
@@ -791,15 +818,15 @@
                     // Map angles to rectangle coordinates
                     // θ₁ ranges from 0 to 2π → maps to vertical (y-axis)
                     // θ₂ ranges from 0 to 2π → maps to horizontal (x-axis)
-                    const x = 20 + ((tp.theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
-                    const y = 20 + ((tp.theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
+                    const x = 30 + ((tp.theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
+                    const y = 30 + ((tp.theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
 
                     if (i === 0) {
                         unwrappedCtx.moveTo(x, y);
                     } else {
                         const prevTp = state.tracePoints[i - 1];
-                        const prevX = 20 + ((prevTp.theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
-                        const prevY = 20 + ((prevTp.theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
+                        const prevX = 30 + ((prevTp.theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
+                        const prevY = 30 + ((prevTp.theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
 
                         // Handle wrapping - if the line would cross the boundary, don't draw it
                         const xDiff = Math.abs(x - prevX);
@@ -821,12 +848,12 @@
             const theta2 = effectiveTangent * state.t;
 
             // Map to rectangle coordinates
-            const particleX = 20 + ((theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
-            const particleY = 20 + ((theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
+            const particleX = 30 + ((theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
+            const particleY = 30 + ((theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
 
             // Draw particle on unwrapped view
             unwrappedCtx.beginPath();
-            unwrappedCtx.arc(particleX, particleY, 6, 0, Math.PI * 2);
+            unwrappedCtx.arc(particleX, particleY, 5, 0, Math.PI * 2);
             unwrappedCtx.fillStyle = state.completedCycle ? '#ef4444' : '#f59e0b';
             unwrappedCtx.fill();
             unwrappedCtx.strokeStyle = state.completedCycle ? '#f87171' : '#fbbf24';
@@ -837,7 +864,7 @@
             unwrappedCtx.setLineDash([5, 5]);
             unwrappedCtx.strokeStyle = '#475569';
             unwrappedCtx.lineWidth = 1;
-            unwrappedCtx.strokeRect(20, 20, rectWidth, rectHeight);
+            unwrappedCtx.strokeRect(30, 30, rectWidth, rectHeight);
             unwrappedCtx.setLineDash([]);
         }
 
@@ -1137,7 +1164,7 @@
                 mediaRecorder.stop();
             }
         }
-        
+
         // Start animation loop
         animate();
     </script>
