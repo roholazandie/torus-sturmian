@@ -7,11 +7,12 @@ let lastAnalysisRender = -Infinity;
 const ANALYSIS_INTERVAL_MS = 150;
 
 const CHART = {
-    data: '#f59e0b',
-    reference: '#94a3b8',
-    band: 'rgba(148, 163, 184, 0.14)',
-    grid: '#1e293b',
-    axisText: '#94a3b8',
+    bars: '#cbd5e1',
+    ones: '#d97706',   // D(N) counts 1s, so it wears the symbol-1 color
+    reference: '#8b98ad',
+    band: 'rgba(139, 152, 173, 0.14)',
+    grid: '#18223a',
+    axisText: '#8b98ad',
     font: '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     pad: { top: 12, right: 12, bottom: 26, left: 40 }
 };
@@ -99,7 +100,7 @@ function drawComplexityChart() {
         const v = tracker.complexity(n);
         if (v === 0) continue;
         c.globalAlpha = v < complexityReference(n) ? 0.4 : 1;
-        c.fillStyle = CHART.data;
+        c.fillStyle = CHART.bars;
         c.beginPath();
         c.roundRect(toX(n) - barW / 2, toY(v), barW, toY(0) - toY(v), [4, 4, 0, 0]);
         c.fill();
@@ -216,7 +217,7 @@ function drawFrequencyChart() {
         }
 
         if (envelope.length > 0) {
-            c.fillStyle = CHART.data;
+            c.fillStyle = CHART.ones;
             c.globalAlpha = 0.35;
             c.beginPath();
             envelope.forEach((e, i) => i === 0 ? c.moveTo(e.x, toY(e.hi)) : c.lineTo(e.x, toY(e.hi)));
@@ -226,7 +227,7 @@ function drawFrequencyChart() {
             c.globalAlpha = 1;
         }
 
-        c.strokeStyle = CHART.data;
+        c.strokeStyle = CHART.ones;
         c.lineWidth = 2;
         c.lineJoin = 'round';
         c.beginPath();
@@ -284,7 +285,7 @@ function renderContinuedFraction() {
         const side = isAlpha ? '= α' : row.side === 'below' ? '< α' : '> α';
         const order = row.side === 'below' ? '01' : '10';
         const word = row.word === null ? '' :
-            row.word.length > shown ? `${row.word.slice(0, shown)}…` : row.word;
+            row.word.length > shown ? `${colorWord(row.word.slice(0, shown))}…` : colorWord(row.word);
         const status = wordStatus(row, sequence);
         const fraction = `${row.p}/${row.q}`;
         const pq = isAlpha && config.useRatio ? fraction :

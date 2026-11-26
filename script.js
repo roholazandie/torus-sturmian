@@ -21,24 +21,13 @@ let config = {
 };
 
 let animationId = null;
-const CANVAS_SIZE = 400;
-const R = 100; // Major radius
-const r = 40;  // Minor radius
 const MAX_TRACE_SEGMENTS = 3000;
+const SEQUENCE_SHOWN = 4000;
 
 // Recording variables
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecording = false;
-
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const unwrappedCanvas = document.getElementById('unwrappedCanvas');
-const unwrappedCtx = unwrappedCanvas.getContext('2d');
-
-const UNWRAPPED_WIDTH = 400;
-const UNWRAPPED_HEIGHT = 400;
-const MARGIN = 30;
 
 function freshState() {
     return {
@@ -76,308 +65,6 @@ function positionAt(tau) {
     };
 }
 
-// x is the tube angle θ₁/2π, y is the major angle θ₂/2π
-function toXYZ(x, y) {
-    const theta1 = 2 * Math.PI * x;
-    const theta2 = 2 * Math.PI * y;
-    return {
-        x: (R + r * Math.cos(theta1)) * Math.cos(theta2),
-        y: (R + r * Math.cos(theta1)) * Math.sin(theta2),
-        z: r * Math.sin(theta1)
-    };
-}
-
-function project(x, y, z, rotX, rotY) {
-    // Rotate around Y axis
-    let x1 = x * Math.cos(rotY) - z * Math.sin(rotY);
-    let z1 = x * Math.sin(rotY) + z * Math.cos(rotY);
-
-    // Rotate around X axis
-    let y1 = y * Math.cos(rotX) - z1 * Math.sin(rotX);
-    let z2 = y * Math.sin(rotX) + z1 * Math.cos(rotX);
-
-    // Perspective projection
-    const distance = 600;
-    const scale = distance / (distance + z2);
-
-    return {
-        x: x1 * scale + CANVAS_SIZE / 2,
-        y: y1 * scale + CANVAS_SIZE / 2,
-        z: z2
-    };
-}
-
-let rotX = -Math.PI / 2;  // Rotate 90 degrees to make torus horizontal
-let rotY = 0;
-let isDragging = false;
-let lastMouseX = 0;
-let lastMouseY = 0;
-
-// Mouse interaction handlers
-canvas.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
-    canvas.style.cursor = 'grabbing';
-});
-
-canvas.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-
-    const deltaX = e.clientX - lastMouseX;
-    const deltaY = e.clientY - lastMouseY;
-
-    // Update rotation based on mouse movement
-    rotY += deltaX * 0.01;
-    rotX += deltaY * 0.01;
-
-    // Clamp rotX to prevent flipping
-    rotX = Math.max(-Math.PI, Math.min(Math.PI, rotX));
-
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
-});
-
-canvas.addEventListener('mouseup', () => {
-    isDragging = false;
-    canvas.style.cursor = 'grab';
-});
-
-canvas.addEventListener('mouseleave', () => {
-    isDragging = false;
-    canvas.style.cursor = 'grab';
-});
-
-// Touch support for mobile devices
-canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
-        isDragging = true;
-        const touch = e.touches[0];
-        lastMouseX = touch.clientX;
-        lastMouseY = touch.clientY;
-        e.preventDefault();
-    }
-});
-
-canvas.addEventListener('touchmove', (e) => {
-    if (!isDragging || e.touches.length !== 1) return;
-
-    const touch = e.touches[0];
-    const deltaX = touch.clientX - lastMouseX;
-    const deltaY = touch.clientY - lastMouseY;
-
-    rotY += deltaX * 0.01;
-    rotX += deltaY * 0.01;
-
-    // Clamp rotX to prevent flipping
-    rotX = Math.max(-Math.PI, Math.min(Math.PI, rotX));
-
-    lastMouseX = touch.clientX;
-    lastMouseY = touch.clientY;
-    e.preventDefault();
-});
-
-canvas.addEventListener('touchend', () => {
-    isDragging = false;
-});
-
-// Set initial cursor style
-canvas.style.cursor = 'grab';
-
-// Completed segments plus the partial one up to the particle.
-function traceSegments() {
-    const pos = positionAt(state.tau);
-    const current = { x0: state.segStart.x, y0: state.segStart.y, x1: pos.x, y1: pos.y };
-    return state.segments.concat([current]);
-}
-
-function draw() {
-    // Clear canvas
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-    // Draw semi-transparent blue torus fill first
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.1)'; // Blue with 0.1 alpha
-
-    const meshRes = 40;
-    const torusPoints = [];
-
-    // Generate torus mesh points
-    for (let i = 0; i <= meshRes; i++) {
-        const row = [];
-        for (let j = 0; j <= meshRes; j++) {
-            const { x, y, z } = toXYZ(i / meshRes, j / meshRes);
-            row.push(project(x, y, z, rotX, rotY));
-        }
-        torusPoints.push(row);
-    }
-
-    // Fill torus sections with semi-transparent blue
-    for (let i = 0; i < meshRes; i++) {
-        for (let j = 0; j < meshRes; j++) {
-            ctx.beginPath();
-            ctx.moveTo(torusPoints[i][j].x, torusPoints[i][j].y);
-            ctx.lineTo(torusPoints[i+1][j].x, torusPoints[i+1][j].y);
-            ctx.lineTo(torusPoints[i+1][j+1].x, torusPoints[i+1][j+1].y);
-            ctx.lineTo(torusPoints[i][j+1].x, torusPoints[i][j+1].y);
-            ctx.closePath();
-            ctx.fill();
-        }
-    }
-
-    // Draw pink mesh lines on top
-    ctx.strokeStyle = '#ec4899'; // Pink color
-    ctx.lineWidth = 0.5;
-
-    // Draw longitudinal lines
-    for (let i = 0; i < torusPoints.length; i += 4) {
-        ctx.beginPath();
-        for (let j = 0; j < torusPoints[i].length; j++) {
-            const p = torusPoints[i][j];
-            if (j === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
-        }
-        ctx.stroke();
-    }
-
-    // Draw meridional lines
-    for (let j = 0; j < torusPoints[0].length; j += 4) {
-        ctx.beginPath();
-        for (let i = 0; i < torusPoints.length; i++) {
-            const p = torusPoints[i][j];
-            if (i === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
-        }
-        ctx.stroke();
-    }
-
-    // Draw trace: each straight segment of the flat torus is a curve on the
-    // 3D torus, sampled finely enough to follow the surface
-    if (config.showTrace) {
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (const s of traceSegments()) {
-            const steps = Math.max(1, Math.ceil(Math.abs(s.x1 - s.x0) * 24 + Math.abs(s.y1 - s.y0) * 48));
-            for (let i = 0; i <= steps; i++) {
-                const f = i / steps;
-                const { x, y, z } = toXYZ(s.x0 + f * (s.x1 - s.x0), s.y0 + f * (s.y1 - s.y0));
-                const p = project(x, y, z, rotX, rotY);
-                if (i === 0) ctx.moveTo(p.x, p.y);
-                else ctx.lineTo(p.x, p.y);
-            }
-        }
-        ctx.stroke();
-    }
-
-    // Draw particle
-    const pos = positionAt(state.tau);
-    const { x, y, z } = toXYZ(pos.x, pos.y);
-    const proj = project(x, y, z, rotX, rotY);
-    ctx.beginPath();
-    ctx.arc(proj.x, proj.y, 5, 0, Math.PI * 2);
-    ctx.fillStyle = state.completedCycle ? '#ef4444' : '#f59e0b';
-    ctx.fill();
-    ctx.strokeStyle = state.completedCycle ? '#f87171' : '#fbbf24';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Draw unwrapped torus view
-    drawUnwrappedTorus();
-}
-
-function drawUnwrappedTorus() {
-    const rectWidth = UNWRAPPED_WIDTH - 2 * MARGIN;
-    const rectHeight = UNWRAPPED_HEIGHT - 2 * MARGIN;
-    // x = θ₁/2π to the right, y = θ₂/2π upward, so the path has slope α on screen
-    const toScreen = (x, y) => ({
-        x: MARGIN + x * rectWidth,
-        y: MARGIN + (1 - y) * rectHeight
-    });
-
-    // Clear unwrapped canvas
-    unwrappedCtx.fillStyle = '#0f172a';
-    unwrappedCtx.fillRect(0, 0, UNWRAPPED_WIDTH, UNWRAPPED_HEIGHT);
-
-    // Draw background rectangle with transparent blue
-    unwrappedCtx.fillStyle = 'rgba(59, 130, 246, 0.1)';
-    unwrappedCtx.fillRect(MARGIN, MARGIN, rectWidth, rectHeight);
-
-    // Draw pink grid lines
-    unwrappedCtx.strokeStyle = '#ec4899';
-    unwrappedCtx.lineWidth = 0.5;
-
-    const gridSize = 10;
-
-    // Vertical lines
-    for (let i = 0; i <= gridSize; i++) {
-        const x = MARGIN + (i * rectWidth / gridSize);
-        unwrappedCtx.beginPath();
-        unwrappedCtx.moveTo(x, MARGIN);
-        unwrappedCtx.lineTo(x, UNWRAPPED_HEIGHT - MARGIN);
-        unwrappedCtx.stroke();
-    }
-
-    // Horizontal lines
-    for (let i = 0; i <= gridSize; i++) {
-        const y = MARGIN + (i * rectHeight / gridSize);
-        unwrappedCtx.beginPath();
-        unwrappedCtx.moveTo(MARGIN, y);
-        unwrappedCtx.lineTo(UNWRAPPED_WIDTH - MARGIN, y);
-        unwrappedCtx.stroke();
-    }
-
-    // Draw axis labels
-    unwrappedCtx.fillStyle = '#94a3b8';
-    unwrappedCtx.font = '11px sans-serif';
-    unwrappedCtx.textAlign = 'center';
-    unwrappedCtx.fillText('θ₁ (tube angle) →', UNWRAPPED_WIDTH / 2, UNWRAPPED_HEIGHT - 10);
-    unwrappedCtx.save();
-    unwrappedCtx.translate(15, UNWRAPPED_HEIGHT / 2);
-    unwrappedCtx.rotate(-Math.PI / 2);
-    unwrappedCtx.fillText('θ₂ (major angle) →', 0, 0);
-    unwrappedCtx.restore();
-
-    // Label which edge emits which symbol
-    unwrappedCtx.font = 'bold 13px monospace';
-    unwrappedCtx.fillStyle = '#fbbf24';
-    unwrappedCtx.fillText('1', UNWRAPPED_WIDTH - MARGIN / 2, UNWRAPPED_HEIGHT / 2 + 4);
-    unwrappedCtx.fillText('0', UNWRAPPED_WIDTH / 2, MARGIN / 2 + 4);
-    unwrappedCtx.textAlign = 'start';
-
-    // Draw trace: straight segments between consecutive crossings
-    if (config.showTrace) {
-        unwrappedCtx.strokeStyle = '#f59e0b';
-        unwrappedCtx.lineWidth = 2;
-        unwrappedCtx.beginPath();
-        for (const s of traceSegments()) {
-            const a = toScreen(s.x0, s.y0);
-            const b = toScreen(s.x1, s.y1);
-            unwrappedCtx.moveTo(a.x, a.y);
-            unwrappedCtx.lineTo(b.x, b.y);
-        }
-        unwrappedCtx.stroke();
-    }
-
-    // Draw particle on unwrapped view
-    const pos = positionAt(state.tau);
-    const particle = toScreen(pos.x, pos.y);
-    unwrappedCtx.beginPath();
-    unwrappedCtx.arc(particle.x, particle.y, 5, 0, Math.PI * 2);
-    unwrappedCtx.fillStyle = state.completedCycle ? '#ef4444' : '#f59e0b';
-    unwrappedCtx.fill();
-    unwrappedCtx.strokeStyle = state.completedCycle ? '#f87171' : '#fbbf24';
-    unwrappedCtx.lineWidth = 2;
-    unwrappedCtx.stroke();
-
-    // Draw edge indicators (showing where wrapping happens)
-    unwrappedCtx.setLineDash([5, 5]);
-    unwrappedCtx.strokeStyle = '#475569';
-    unwrappedCtx.lineWidth = 1;
-    unwrappedCtx.strokeRect(MARGIN, MARGIN, rectWidth, rectHeight);
-    unwrappedCtx.setLineDash([]);
-}
-
 // Consume crossings in exact time order until targetTau or maxSymbols letters.
 // With stopAtPeriod, a rational path halts once it closes.
 function advance(targetTau, maxSymbols = Infinity, stopAtPeriod = true) {
@@ -396,6 +83,7 @@ function advance(targetTau, maxSymbols = Infinity, stopAtPeriod = true) {
         if (ev.symbol === '1') end.x = 1;
         else end.y = 1;
 
+        noteCrossing(ev.symbol, end.x, end.y);
         if (end.x - state.segStart.x > 1e-12 || end.y - state.segStart.y > 1e-12) {
             state.segments.push({ x0: state.segStart.x, y0: state.segStart.y, x1: end.x, y1: end.y });
         }
@@ -436,12 +124,14 @@ function update() {
 // Generate letters instantly, without animating them
 function fastForward(count) {
     state.completedCycle = false;
+    suppressFlashes = true;
     advance(Infinity, count, false);
+    suppressFlashes = false;
 }
 
 function animate() {
     update();
-    draw();
+    drawViews();
     renderAnalysis();
     animationId = requestAnimationFrame(animate);
 }
@@ -500,12 +190,12 @@ function setMode(useRatio) {
     if (useRatio) {
         document.getElementById('rationalMode').classList.add('active');
         document.getElementById('irrationalMode').classList.remove('active');
-        document.getElementById('rationalPanel').style.display = 'block';
+        document.getElementById('rationalPanel').style.display = 'flex';
         document.getElementById('irrationalPanel').style.display = 'none';
     } else {
         document.getElementById('irrationalMode').classList.add('active');
         document.getElementById('rationalMode').classList.remove('active');
-        document.getElementById('irrationalPanel').style.display = 'block';
+        document.getElementById('irrationalPanel').style.display = 'flex';
         document.getElementById('rationalPanel').style.display = 'none';
     }
     handleReset();
@@ -568,27 +258,40 @@ function recomputeNWords() {
     updateNWordsDisplay();
 }
 
+// Wrap runs of each letter so 0 and 1 carry their symbol colors
+function colorWord(word) {
+    return word.replace(/0+|1+/g, run => `<span class="w${run[0]}">${run}</span>`);
+}
+
 function updateNWordsDisplay() {
     const nwordsArray = Array.from(config.uniqueNWords).sort();
     const nwordsOutput = document.getElementById('nwordsOutput');
     const nwordsCount = document.getElementById('nwordsCount');
 
     if (nwordsArray.length === 0) {
-        nwordsOutput.textContent = 'Press Start to begin...';
+        nwordsOutput.textContent = 'Press Start to begin…';
         nwordsCount.textContent = '0';
     } else {
-        // Display n-words as styled badges
         nwordsOutput.innerHTML = nwordsArray
-            .map(nword => `<span class="nword-item">${nword}</span>`)
+            .map(nword => `<span class="nword-item">${colorWord(nword)}</span>`)
             .join('');
         nwordsCount.textContent = nwordsArray.length;
     }
 }
 
+// Show the latest letters; earlier ones are summarized as a count
 function updateSequenceDisplay() {
-    document.getElementById('sequenceOutput').textContent =
-        config.sequence || 'Press Start to begin...';
-    document.getElementById('sequenceLength').textContent = config.sequence.length;
+    const output = document.getElementById('sequenceOutput');
+    const sequence = config.sequence;
+    if (!sequence) {
+        output.textContent = 'Press Start to begin…';
+    } else {
+        const hidden = Math.max(0, sequence.length - SEQUENCE_SHOWN);
+        const earlier = hidden > 0 ? `<span class="earlier">… ${hidden.toLocaleString('en-US')} earlier letters</span>` : '';
+        output.innerHTML = earlier + colorWord(sequence.slice(hidden));
+        output.scrollTop = output.scrollHeight;
+    }
+    document.getElementById('sequenceLength').textContent = sequence.length.toLocaleString('en-US');
     updateNWordsDisplay();
 }
 
@@ -675,8 +378,8 @@ document.getElementById('nwordsLength').addEventListener('change', (e) => {
 // Recording functions
 async function startRecording() {
     try {
-        // Create a video stream from the canvas
-        const stream = canvas.captureStream(30); // 30 FPS
+        // Record both views side by side (composited in render.js)
+        const stream = getRecordingCanvas().captureStream(30); // 30 FPS
 
         // Check for browser support and create MediaRecorder
         const options = {

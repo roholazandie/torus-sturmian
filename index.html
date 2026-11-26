@@ -3,68 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sturmian Word on 3D Torus</title>
+    <title>Sturmian Torus</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Sturmian Word on 3D Torus</h1>
-        <p class="subtitle">
-            A particle follows a straight line on the torus. Write 1 each time it completes a turn around the tube
-            and 0 each time it completes a turn around the central hole.
-        </p>
+    <div class="app">
+        <header class="app-header">
+            <h1>Sturmian words on the torus</h1>
+            <p class="subtitle">
+                A particle moves along a straight line on the torus. Write
+                <span class="sym sym-1">1</span> each time it completes a turn around the tube and
+                <span class="sym sym-0">0</span> each time it completes a turn around the central hole.
+            </p>
+        </header>
 
-        <!-- Sequence Display -->
-        <div class="sequence-display">
-            <div class="sequence-header">
-                <h2>Sturmian Sequence</h2>
-                <span class="sequence-length">Length: <span id="sequenceLength">0</span></span>
-            </div>
-            <div class="sequence-output" id="sequenceOutput">
-                Press Start to begin...
-            </div>
-        </div>
+        <div class="workspace">
+            <!-- Controls -->
+            <aside class="sidebar">
+                <div class="control-panel">
+                    <span class="control-label">Slope</span>
+                    <div class="mode-toggle">
+                        <button class="mode-button active" id="irrationalMode" onclick="setMode(false)">Irrational α</button>
+                        <button class="mode-button" id="rationalMode" onclick="setMode(true)">Rational p/q</button>
+                    </div>
 
-        <!-- Unique N-Words Display -->
-        <div class="nwords-display">
-            <div class="nwords-header">
-                <h2>Unique N-Words</h2>
-                <div class="nwords-controls">
-                    <label for="nwordsLength">N-word length:</label>
-                    <select id="nwordsLength" class="nwords-select">
-                        <option value="2" selected>2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                    </select>
-                    <span class="nwords-count">Count: <span id="nwordsCount">0</span></span>
+                    <div id="irrationalPanel">
+                        <label class="field-label" for="tangentInput">
+                            α = <span class="value" id="tangentValue">1.618034</span>
+                        </label>
+                        <div class="slider-row">
+                            <input type="range" class="slider" id="tangentSlider"
+                                   min="0.001" max="10" step="0.001" value="1.618033988749895" aria-label="Slope">
+                            <input type="number" class="number-input" id="tangentInput"
+                                   min="0.001" max="1000" step="any" value="1.618033988749895">
+                        </div>
+                        <div class="preset-buttons">
+                            <button class="preset-button" onclick="setTangent(Math.sqrt(2))">√2</button>
+                            <button class="preset-button" onclick="setTangent((1 + Math.sqrt(5)) / 2)">φ</button>
+                            <button class="preset-button" onclick="setTangent(Math.E)">e</button>
+                            <button class="preset-button" onclick="setTangent(Math.PI)">π</button>
+                        </div>
+                    </div>
+
+                    <div id="rationalPanel" style="display: none;">
+                        <span class="field-label">
+                            p/q = <span class="value" id="ratioDisplay">2/5 = 0.400000</span>
+                        </span>
+                        <div class="ratio-inputs">
+                            <label class="input-group">
+                                <span>p</span>
+                                <input type="number" class="number-input" id="pInput" min="1" max="100000" step="1" value="2">
+                            </label>
+                            <span class="ratio-slash">/</span>
+                            <label class="input-group">
+                                <span>q</span>
+                                <input type="number" class="number-input" id="qInput" min="1" max="100000" step="1" value="5">
+                            </label>
+                        </div>
+                        <div class="preset-buttons">
+                            <button class="preset-button" onclick="setRatio(2, 3)">2/3</button>
+                            <button class="preset-button" onclick="setRatio(3, 5)">3/5</button>
+                            <button class="preset-button" onclick="setRatio(5, 8)">5/8</button>
+                            <button class="preset-button" onclick="setRatio(8, 13)">8/13</button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="nwords-output" id="nwordsOutput">
-                Press Start to begin...
-            </div>
-        </div>
 
-        <!-- Both Canvases Side by Side -->
-        <div class="canvases-wrapper">
-            <!-- 3D Torus Canvas -->
-            <div class="canvas-section">
-                <h3>3D Torus</h3>
-                <div class="canvas-container">
-                    <canvas id="canvas" width="400" height="400"></canvas>
+                <div class="control-panel">
+                    <label class="control-label" for="rhoInput">
+                        Offset ρ <span class="value" id="rhoValue">0.000</span>
+                    </label>
+                    <p class="field-hint">Start at θ₂ = 2πρ.</p>
+                    <div class="slider-row">
+                        <input type="range" class="slider" id="rhoSlider"
+                               min="0" max="0.999" step="0.001" value="0" aria-label="Offset">
+                        <input type="number" class="number-input" id="rhoInput"
+                               min="0" max="0.999" step="any" value="0">
+                    </div>
+                    <div class="inline-field">
+                        <label for="cornerOrder">At a corner write</label>
+                        <select id="cornerOrder" class="select">
+                            <option value="10" selected>10</option>
+                            <option value="01">01</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Unwrapped Torus View -->
-            <div class="canvas-section">
-                <h3>Unwrapped Torus (Fundamental Domain)</h3>
-                <div class="canvas-container">
-                    <canvas id="unwrappedCanvas" width="400" height="400"></canvas>
+                <div class="control-panel">
+                    <label class="control-label" for="speedSlider">
+                        Speed <span class="value"><span id="speedValue">5.0</span>×</span>
+                    </label>
+                    <input type="range" class="slider" id="speedSlider" min="1" max="100" step="1" value="5">
+                    <label class="checkbox-container">
+                        <input type="checkbox" class="checkbox" id="showTrace" checked>
+                        <span>Show trace</span>
+                    </label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" class="checkbox" id="enableRecording">
+                        <span>Record video of both views</span>
+                    </label>
                 </div>
-            </div>
+
+                <div class="action-buttons">
+                    <button class="action-button start" id="startBtn" onclick="handleStart()">▶ Start</button>
+                    <button class="action-button stop" id="stopBtn" onclick="handleStop()" style="display: none;">⏸ Stop</button>
+                    <button class="action-button secondary preset-button" onclick="fastForward(10000)"
+                            title="Generate the next 10,000 letters instantly">⏭ +10k</button>
+                    <button class="action-button secondary" onclick="handleReset()">↺ Reset</button>
+                </div>
+            </aside>
+
+            <!-- Views and word -->
+            <main class="stage">
+                <div class="canvases-wrapper">
+                    <figure class="canvas-section">
+                        <figcaption>Torus <span class="hint">drag to rotate · double-click to reset</span></figcaption>
+                        <canvas id="canvas" aria-label="Path on the 3D torus"></canvas>
+                    </figure>
+                    <figure class="canvas-section">
+                        <figcaption>Unwrapped square <span class="hint">opposite edges are glued</span></figcaption>
+                        <canvas id="unwrappedCanvas" aria-label="Path on the unwrapped square"></canvas>
+                    </figure>
+                </div>
+
+                <div class="symbol-legend">
+                    <span><i class="key-sym sym-bg-1"></i><b>1</b> θ₁ wraps: crossing the outer circle on the torus, the left/right edges of the square</span>
+                    <span><i class="key-sym sym-bg-0"></i><b>0</b> θ₂ wraps: crossing the tube circle on the torus, the top/bottom edges of the square</span>
+                </div>
+
+                <section class="sequence-display">
+                    <div class="sequence-header">
+                        <h2>Word</h2>
+                        <span class="sequence-length"><span id="sequenceLength">0</span> letters</span>
+                    </div>
+                    <div class="sequence-output" id="sequenceOutput">Press Start to begin…</div>
+                </section>
+
+                <section class="nwords-display">
+                    <div class="nwords-header">
+                        <h2>Factors of length</h2>
+                        <select id="nwordsLength" class="select" aria-label="Factor length">
+                            <option value="2" selected>2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                        <span class="nwords-count"><span id="nwordsCount">0</span> distinct</span>
+                    </div>
+                    <div class="nwords-output" id="nwordsOutput">Press Start to begin…</div>
+                </section>
+            </main>
         </div>
 
         <!-- Structure of the Word -->
+        <h2 class="section-title">Structure of the word</h2>
         <div class="analysis-grid">
             <div class="analysis-card">
                 <div class="analysis-header">
@@ -139,134 +231,8 @@
             </div>
         </div>
 
-        <!-- Mode Toggle -->
-        <div class="control-panel">
-            <label class="control-label">Input Mode</label>
-            <div class="mode-toggle">
-                <button class="mode-button active" id="irrationalMode" onclick="setMode(false)">
-                    Irrational (Slope)
-                </button>
-                <button class="mode-button" id="rationalMode" onclick="setMode(true)">
-                    Rational (p/q)
-                </button>
-            </div>
-        </div>
-
-        <!-- Irrational Input -->
-        <div class="control-panel" id="irrationalPanel">
-            <label class="control-label">
-                Slope α: <span id="tangentValue">1.618034</span>
-            </label>
-            <div class="slider-row">
-                <input type="range" class="slider" id="tangentSlider"
-                       min="0.001" max="10" step="0.001" value="1.618033988749895">
-                <input type="number" class="number-input" id="tangentInput"
-                       min="0.001" max="1000" step="any" value="1.618033988749895">
-            </div>
-            <div class="preset-buttons">
-                <button class="preset-button" onclick="setTangent(Math.sqrt(2))">
-                    √2 ≈ 1.414
-                </button>
-                <button class="preset-button" onclick="setTangent((1 + Math.sqrt(5)) / 2)">
-                    φ ≈ 1.618
-                </button>
-                <button class="preset-button" onclick="setTangent(Math.PI)">
-                    π ≈ 3.142
-                </button>
-            </div>
-        </div>
-
-        <!-- Rational Input -->
-        <div class="control-panel" id="rationalPanel" style="display: none;">
-            <label class="control-label">
-                Rational Ratio: <span id="ratioDisplay">2/5 = 0.400000</span>
-            </label>
-            <div class="ratio-inputs">
-                <div class="input-group">
-                    <label>p (numerator)</label>
-                    <input type="number" class="number-input" id="pInput"
-                           min="1" max="100" step="1" value="2">
-                </div>
-                <div class="input-group">
-                    <label>q (denominator)</label>
-                    <input type="number" class="number-input" id="qInput"
-                           min="1" max="100" step="1" value="5">
-                </div>
-            </div>
-            <div class="preset-buttons">
-                <button class="preset-button" onclick="setRatio(2, 3)">2/3</button>
-                <button class="preset-button" onclick="setRatio(3, 5)">3/5</button>
-                <button class="preset-button" onclick="setRatio(5, 8)">5/8</button>
-                <button class="preset-button" onclick="setRatio(8, 13)">8/13</button>
-            </div>
-        </div>
-
-        <!-- Offset and Corner Rule -->
-        <div class="control-panel">
-            <label class="control-label">
-                Offset ρ (start at θ₂ = 2πρ): <span id="rhoValue">0.000</span>
-            </label>
-            <div class="slider-row">
-                <input type="range" class="slider" id="rhoSlider"
-                       min="0" max="0.999" step="0.001" value="0">
-                <input type="number" class="number-input" id="rhoInput"
-                       min="0" max="0.999" step="any" value="0">
-            </div>
-            <div class="nwords-controls" style="margin-top: 12px;">
-                <label for="cornerOrder">At a corner (both angles wrap at once) write:</label>
-                <select id="cornerOrder" class="nwords-select">
-                    <option value="10" selected>10</option>
-                    <option value="01">01</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Speed Control -->
-        <div class="control-panel">
-            <label class="control-label">
-                Speed: <span id="speedValue">5.0</span>x
-            </label>
-            <input type="range" class="slider" id="speedSlider"
-                   min="1" max="100" step="1" value="5">
-            <div class="speed-labels">
-                <span>1x</span>
-                <span>50x</span>
-                <span>100x</span>
-            </div>
-        </div>
-
-        <!-- Trace Toggle -->
-        <div class="control-panel">
-            <label class="checkbox-container">
-                <input type="checkbox" class="checkbox" id="showTrace" checked>
-                <span>Show Trace Path</span>
-            </label>
-            <label class="checkbox-container" style="margin-top: 10px;">
-                <input type="checkbox" class="checkbox" id="enableRecording">
-                <span>Record Animation</span>
-            </label>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="action-buttons">
-            <button class="action-button start" id="startBtn" onclick="handleStart()">
-                ▶ Start
-            </button>
-            <button class="action-button stop" id="stopBtn" onclick="handleStop()" style="display: none;">
-                ⏸ Stop
-            </button>
-            <button class="action-button reset preset-button" onclick="fastForward(10000)"
-                    title="Generate the next 10,000 letters instantly">
-                ⏭ +10k letters
-            </button>
-            <button class="action-button reset" onclick="handleReset()">
-                ↺ Reset
-            </button>
-        </div>
-
-        <!-- Information -->
-        <div class="info-panel">
-            <h3>About 3D Torus Sturmian Words</h3>
+        <section class="info-panel">
+            <h2>About</h2>
             <p>
                 The particle moves along θ₁(t) = t (around the tube) and θ₂(t) = α·t + 2πρ (around the
                 central hole). On the unwrapped square this is a straight line of slope α; leaving through
@@ -285,13 +251,13 @@
                 the corner rule decides whether to write 10 or 01. The period is then a palindrome followed
                 by that pair, a rotation of a Christoffel word.
             </p>
-        </div>
+        </section>
     </div>
 
     <script src="sturmian.js"></script>
     <script src="analysis.js"></script>
     <script src="panels.js"></script>
-
+    <script src="render.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
