@@ -61,20 +61,39 @@ function rationalContinuedFraction(p, q) {
     return terms;
 }
 
-// Continued fraction of a float, stopped before rounding error dominates.
-function continuedFraction(x, maxTerms = 12, maxDenominator = 1e6) {
+// Continued fraction of a double, computed exactly from its binary value and
+// stopped once the convergent equals x to within a few ulps (so a typed decimal
+// such as 2.8 gives [2; 1, 4], matching how the crossing stream treats it) or
+// the denominator passes maxDenominator. Floating-point Euclid is not used: its
+// rounding turns 2.8 into the non-canonical [2; 1, 3, 1].
+function continuedFraction(x, maxTerms = 40, maxDenominator = 1e6) {
+    const view = new DataView(new ArrayBuffer(8));
+    view.setFloat64(0, x);
+    const bits = view.getBigUint64(0);
+    const exponent = Number((bits >> 52n) & 0x7ffn) - 1075;
+    const mantissa = (bits & ((1n << 52n) - 1n)) | (1n << 52n);
+    let num = exponent >= 0 ? mantissa << BigInt(exponent) : mantissa;
+    let den = exponent >= 0 ? 1n : 1n << BigInt(-exponent);
+
     const terms = [];
-    const target = x;
     let [p0, q0, p1, q1] = [0, 1, 1, 0];
-    for (let i = 0; i < maxTerms; i++) {
-        const a = Math.floor(x);
+    let exact = false;
+    while (den !== 0n && terms.length < maxTerms) {
+        const a = Number(num / den);
         const [p, q] = [a * p1 + p0, a * q1 + q0];
         if (q > maxDenominator) break;
         terms.push(a);
         [p0, q0, p1, q1] = [p1, q1, p, q];
-        const frac = x - a;
-        if (Math.abs(target - p / q) < 1e-12 || frac < 1e-12) break;
-        x = 1 / frac;
+        if (Math.abs(x - p / q) <= 8 * Number.EPSILON * x) {
+            exact = true;
+            break;
+        }
+        [num, den] = [den, num % den];
+    }
+    // A finished expansion [..., a, 1] equals [..., a + 1]; keep the canonical form
+    if (exact && terms.length > 1 && terms[terms.length - 1] === 1) {
+        terms.pop();
+        terms[terms.length - 1] += 1;
     }
     return terms;
 }

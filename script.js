@@ -23,6 +23,8 @@ let config = {
 let animationId = null;
 const MAX_TRACE_SEGMENTS = 3000;
 const SEQUENCE_SHOWN = 4000;
+const MAX_LETTERS_PER_FRAME = 20000;
+let lastFrameTime = 0;
 
 // Recording variables
 let mediaRecorder = null;
@@ -115,9 +117,15 @@ function advance(targetTau, maxSymbols = Infinity, stopAtPeriod = true) {
 function update() {
     if (!config.isRunning) return;
 
-    const targetTau = state.tau + config.speed * 0.01 / (2 * Math.PI);
-    advance(targetTau);
-    if (!state.completedCycle) state.tau = targetTau;
+    // Advance by elapsed time, so speed does not depend on the display's refresh rate
+    const now = performance.now();
+    const frames = Math.min(6, (now - lastFrameTime) / (1000 / 60));
+    lastFrameTime = now;
+    const targetTau = state.tau + frames * config.speed * 0.01 / (2 * Math.PI);
+
+    // Cap the letters per frame so huge slopes slow the animation instead of freezing it
+    advance(targetTau, MAX_LETTERS_PER_FRAME);
+    if (!state.completedCycle && state.pending.tau > targetTau) state.tau = targetTau;
     if (state.completedCycle) handleStop();
 }
 
@@ -141,6 +149,7 @@ function handleStart() {
     // After a closed rational period, Start runs the next period
     state.completedCycle = false;
     config.isRunning = true;
+    lastFrameTime = performance.now();
     document.getElementById('startBtn').style.display = 'none';
     document.getElementById('stopBtn').style.display = 'flex';
     disableInputs(true);
@@ -225,8 +234,17 @@ function setRho(value) {
     config.rho = value;
     document.getElementById('rhoSlider').value = value;
     document.getElementById('rhoInput').value = value;
-    document.getElementById('rhoValue').textContent = value.toFixed(3);
+    document.getElementById('rhoValue').textContent = formatOffset(value);
     handleReset();
+}
+
+// Three decimals, or more when rounding would display a value below 1 as 1.000
+function formatOffset(value) {
+    for (let digits = 3; digits < 12; digits++) {
+        const text = value.toFixed(digits);
+        if (parseFloat(text) < 1) return text;
+    }
+    return String(value);
 }
 
 function updateRatioDisplay() {

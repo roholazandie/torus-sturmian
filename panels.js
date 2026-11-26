@@ -76,10 +76,24 @@ function drawYAxis(c, width, toY, ticks, format) {
     }
 }
 
+// Period of the word if the slope is rational, null otherwise. A slope typed in
+// irrational mode counts as rational when its continued fraction terminates
+// (the same test the crossing stream uses for corners).
+let periodCache = { key: null, period: null };
+function wordPeriod() {
+    if (config.useRatio) return (config.p + config.q) / gcd(config.p, config.q);
+    if (periodCache.key !== config.tangent) {
+        const rows = convergents(continuedFraction(config.tangent), 0);
+        const last = rows[rows.length - 1];
+        const exact = Math.abs(last.p / last.q - config.tangent) <= 8 * Number.EPSILON * config.tangent;
+        periodCache = { key: config.tangent, period: exact ? last.p + last.q : null };
+    }
+    return periodCache.period;
+}
+
 function complexityReference(n) {
-    if (!config.useRatio) return n + 1;
-    const period = (config.p + config.q) / gcd(config.p, config.q);
-    return Math.min(n + 1, period);
+    const period = wordPeriod();
+    return period === null ? n + 1 : Math.min(n + 1, period);
 }
 
 function drawComplexityChart() {
@@ -132,7 +146,7 @@ function drawComplexityChart() {
     let matched = 0;
     while (matched < maxN && tracker.complexity(matched + 1) === complexityReference(matched + 1)) matched++;
     document.getElementById('complexityRefLabel').textContent =
-        config.useRatio ? `min(n + 1, ${complexityReference(maxN + 1)})` : 'n + 1';
+        wordPeriod() === null ? 'n + 1' : `min(n + 1, ${wordPeriod()})`;
     document.getElementById('complexityNote').textContent = tracker.length === 0 ? '' :
         matched === maxN ? `matches for all n ≤ ${maxN}` : `matches for n ≤ ${matched}; longer factors need a longer word`;
 }
@@ -272,11 +286,16 @@ function renderContinuedFraction() {
         : continuedFraction(alpha);
     const rows = convergents(terms);
     const last = rows[rows.length - 1];
-    const exact = Math.abs(last.p / last.q - alpha) < 1e-12;
+    // Same notion of equality as the crossing stream: within a few ulps
+    const exact = Math.abs(last.p / last.q - alpha) <= 8 * Number.EPSILON * alpha;
 
-    const tail = terms.length > 1 ? `; ${terms.slice(1).join(', ')}` : '';
+    // The header shows the first terms; the table lists every convergent
+    const HEADER_TERMS = 16;
+    const shownTerms = terms.slice(1, HEADER_TERMS);
+    const tail = shownTerms.length > 0 ? `; ${shownTerms.join(', ')}` : '';
+    const more = !exact || terms.length > HEADER_TERMS;
     document.getElementById('cfExpansion').textContent =
-        `α ${exact ? '=' : '≈'} [${terms[0]}${tail}${exact ? '' : ', …'}]`;
+        `α ${exact ? '=' : '≈'} [${terms[0]}${tail}${more ? ', …' : ''}]`;
 
     const sequence = config.sequence;
     const shown = 16;

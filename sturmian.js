@@ -8,9 +8,10 @@
 // When both angles wrap at the same instant the path passes through a corner of
 // the fundamental square; both symbols are emitted, in `cornerOrder`.
 
-// Relative tolerance for treating two crossing times as simultaneous; well above
-// double rounding (~1e-16) and well below the closest genuine near-misses.
-const TIE_EPS = 1e-12;
+// Relative tolerance for treating two crossing times as simultaneous: a few
+// units of double rounding. Anything looser turns genuine near-misses into
+// corners; for √2 the line misses a corner by 3e-7 at k = 1,136,689.
+const TIE_EPS = 8 * Number.EPSILON;
 
 function gcd(a, b) {
     a = Math.abs(Math.round(a));
