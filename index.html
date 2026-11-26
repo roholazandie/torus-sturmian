@@ -10,7 +10,8 @@
     <div class="container">
         <h1>Sturmian Word on 3D Torus</h1>
         <p class="subtitle">
-            Watch a particle trace a path on a 3D torus: 0 for major circle crossings, 1 for minor circle crossings
+            A particle follows a straight line on the torus. Write 1 each time it completes a turn around the tube
+            and 0 each time it completes a turn around the central hole.
         </p>
 
         <!-- Sequence Display -->
@@ -63,6 +64,81 @@
             </div>
         </div>
 
+        <!-- Structure of the Word -->
+        <div class="analysis-grid">
+            <div class="analysis-card">
+                <div class="analysis-header">
+                    <h2>Factor Complexity</h2>
+                    <span class="analysis-note" id="complexityNote"></span>
+                </div>
+                <p class="analysis-caption">
+                    p(n) counts the distinct factors of length n. Sturmian words are exactly the
+                    aperiodic words with p(n) = n + 1; a periodic word of period L stops at L.
+                </p>
+                <div class="chart-wrap">
+                    <canvas class="chart-canvas" id="complexityChart"></canvas>
+                    <div class="chart-tooltip" id="complexityTip"></div>
+                </div>
+                <div class="chart-legend">
+                    <span><i class="key-bar"></i>observed p(n)</span>
+                    <span><i class="key-dash"></i><span id="complexityRefLabel">n + 1</span></span>
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="analysis-header">
+                    <h2>Balance</h2>
+                    <span class="analysis-note" id="balanceNote"></span>
+                </div>
+                <p class="analysis-caption">
+                    Number of 1s in a window of length n, over every window seen so far (min–max).
+                    In a balanced word any two windows of the same length differ by at most one 1.
+                </p>
+                <div class="balance-grid" id="balanceGrid"></div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="analysis-header">
+                    <h2>Letter Frequency</h2>
+                    <span class="analysis-note" id="frequencyNote"></span>
+                </div>
+                <p class="analysis-caption">
+                    D(N) = (number of 1s in the first N letters) − N/(1+α). The frequency of 1s tends to
+                    1/(1+α), and D(N) never leaves a band of width 1: the error is bounded, not just small.
+                    N is on a log scale.
+                </p>
+                <div class="chart-wrap">
+                    <canvas class="chart-canvas" id="frequencyChart"></canvas>
+                    <div class="chart-tooltip" id="frequencyTip"></div>
+                </div>
+                <div class="chart-legend">
+                    <span><i class="key-line"></i>D(N)</span>
+                    <span><i class="key-band"></i>theoretical band</span>
+                </div>
+            </div>
+
+            <div class="analysis-card">
+                <div class="analysis-header">
+                    <h2>Continued Fraction</h2>
+                    <span class="analysis-note" id="cfExpansion"></span>
+                </div>
+                <p class="analysis-caption">
+                    Each convergent p<sub>k</sub>/q<sub>k</sub> of α gives a standard word S<sub>k</sub>, the
+                    period of the closed path of that slope, built by S<sub>k</sub> = S<sub>k−1</sub><sup>a<sub>k</sub></sup> S<sub>k−2</sub>
+                    from S<sub>−1</sub> = 0 and S<sub>0</sub> = 0<sup>a<sub>0</sub></sup>1. With ρ = 0 every S<sub>k</sub> is a
+                    prefix of the word: the irrational word is their limit. Click a fraction to run its closed path.
+                </p>
+                <div class="cf-table-wrap">
+                    <table class="cf-table">
+                        <thead>
+                            <tr><th>k</th><th>a<sub>k</sub></th><th>p<sub>k</sub>/q<sub>k</sub></th><th>|S<sub>k</sub>|</th><th>S<sub>k</sub></th><th>in word</th></tr>
+                        </thead>
+                        <tbody id="cfTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Mode Toggle -->
         <div class="control-panel">
             <label class="control-label">Input Mode</label>
@@ -79,13 +155,13 @@
         <!-- Irrational Input -->
         <div class="control-panel" id="irrationalPanel">
             <label class="control-label">
-                Slope (irrational): <span id="tangentValue">1.618000</span>
+                Slope α: <span id="tangentValue">1.618034</span>
             </label>
             <div class="slider-row">
                 <input type="range" class="slider" id="tangentSlider"
-                       min="0.001" max="10" step="0.001" value="1.618">
+                       min="0.001" max="10" step="0.001" value="1.618033988749895">
                 <input type="number" class="number-input" id="tangentInput"
-                       min="0.001" max="1000" step="any" value="1.618">
+                       min="0.001" max="1000" step="any" value="1.618033988749895">
             </div>
             <div class="preset-buttons">
                 <button class="preset-button" onclick="setTangent(Math.sqrt(2))">
@@ -125,6 +201,26 @@
             </div>
         </div>
 
+        <!-- Offset and Corner Rule -->
+        <div class="control-panel">
+            <label class="control-label">
+                Offset ρ (start at θ₂ = 2πρ): <span id="rhoValue">0.000</span>
+            </label>
+            <div class="slider-row">
+                <input type="range" class="slider" id="rhoSlider"
+                       min="0" max="0.999" step="0.001" value="0">
+                <input type="number" class="number-input" id="rhoInput"
+                       min="0" max="0.999" step="any" value="0">
+            </div>
+            <div class="nwords-controls" style="margin-top: 12px;">
+                <label for="cornerOrder">At a corner (both angles wrap at once) write:</label>
+                <select id="cornerOrder" class="nwords-select">
+                    <option value="10" selected>10</option>
+                    <option value="01">01</option>
+                </select>
+            </div>
+        </div>
+
         <!-- Speed Control -->
         <div class="control-panel">
             <label class="control-label">
@@ -159,6 +255,10 @@
             <button class="action-button stop" id="stopBtn" onclick="handleStop()" style="display: none;">
                 ⏸ Stop
             </button>
+            <button class="action-button reset preset-button" onclick="fastForward(10000)"
+                    title="Generate the next 10,000 letters instantly">
+                ⏭ +10k letters
+            </button>
             <button class="action-button reset" onclick="handleReset()">
                 ↺ Reset
             </button>
@@ -168,15 +268,29 @@
         <div class="info-panel">
             <h3>About 3D Torus Sturmian Words</h3>
             <p>
-                The particle moves on a 3D torus with parametric equations: θ₁(t) = t and θ₂(t) = slope·t.
-                You can use either an irrational slope (like √2, φ, or π) or a rational ratio p/q.
+                The particle moves along θ₁(t) = t (around the tube) and θ₂(t) = α·t + 2πρ (around the
+                central hole). On the unwrapped square this is a straight line of slope α; leaving through
+                the right edge writes <strong>1</strong>, leaving through the top edge writes <strong>0</strong>.
+                Crossing times are computed exactly, so no crossing is missed at any speed or slope.
             </p>
             <p>
-                When the slope is <strong>irrational</strong>, the path never repeats and creates an aperiodic
-                Sturmian sequence. When it's <strong>rational (p/q)</strong>, the path closes after q loops
-                around the major circle and p loops around the minor circle, creating a periodic sequence.
+                When α is <strong>irrational</strong>, the path never closes and the word is Sturmian: it has
+                exactly n + 1 distinct factors of each length n. With ρ = 0 it is the characteristic word of α.
+                (Typed slopes are stored as floating-point numbers, so this holds up to machine precision.)
             </p>
+            <p>
+                When α = <strong>p/q</strong> in lowest terms, the path closes after q turns around the tube and
+                p turns around the hole, so the word is periodic with period p + q (q ones and p zeros).
+                With ρ = 0 the path starts and ends at a corner of the square. There both angles wrap at once and
+                the corner rule decides whether to write 10 or 01. The period is then a palindrome followed
+                by that pair, a rotation of a Christoffel word.
+            </p>
+        </div>
     </div>
+
+    <script src="sturmian.js"></script>
+    <script src="analysis.js"></script>
+    <script src="panels.js"></script>
 
     <script src="script.js"></script>
 </body>

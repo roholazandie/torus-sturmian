@@ -1,17 +1,16 @@
+// Path: θ₁ = 2πτ (around the tube), θ₂ = 2π(ατ + ρ) (around the central axis).
+// Positions are kept in the unit square: x = θ₁/2π, y = θ₂/2π.
+// Crossings come from createCrossingStream (sturmian.js) and are exact.
+
 // Global state
-let state = {
-    t: 0,
-    lastTheta1: 0,
-    lastTheta2: 0,
-    tracePoints: [],
-    initialized: false,
-    completedCycle: false
-};
+let state = freshState();
 
 let config = {
-    tangent: 1.618,
+    tangent: (1 + Math.sqrt(5)) / 2,
     p: 2,
     q: 5,
+    rho: 0,
+    cornerOrder: '10',
     useRatio: false,
     speed: 5,
     isRunning: false,
@@ -25,6 +24,7 @@ let animationId = null;
 const CANVAS_SIZE = 400;
 const R = 100; // Major radius
 const r = 40;  // Minor radius
+const MAX_TRACE_SEGMENTS = 3000;
 
 // Recording variables
 let mediaRecorder = null;
@@ -38,24 +38,53 @@ const unwrappedCtx = unwrappedCanvas.getContext('2d');
 
 const UNWRAPPED_WIDTH = 400;
 const UNWRAPPED_HEIGHT = 400;
+const MARGIN = 30;
 
-// Helper functions
-function gcd(a, b) {
-    a = Math.abs(Math.round(a));
-    b = Math.abs(Math.round(b));
-    while (b !== 0) {
-        let temp = b;
-        b = a % b;
-        a = temp;
-    }
-    return a;
+function freshState() {
+    return {
+        tau: 0,                   // time, in turns of θ₁
+        stream: null,             // exact crossing generator
+        pending: null,            // next crossing not yet reached
+        segStart: { x: 0, y: 0 }, // start of the current straight segment
+        segTau: 0,                // τ at segStart
+        segments: [],             // completed segments in the unit square
+        symbolsInPeriod: 0,
+        completedCycle: false
+    };
 }
 
-function toXYZ(theta1, theta2) {
-    const x = (R + r * Math.cos(theta1)) * Math.cos(theta2);
-    const y = (R + r * Math.cos(theta1)) * Math.sin(theta2);
-    const z = r * Math.sin(theta1);
-    return { x, y, z };
+// Helper functions
+function effectiveSlope() {
+    return config.useRatio ? config.p / config.q : config.tangent;
+}
+
+function resetSimulation() {
+    state = freshState();
+    state.stream = createCrossingStream(config.useRatio
+        ? { p: config.p, q: config.q, rho: config.rho, cornerOrder: config.cornerOrder }
+        : { alpha: config.tangent, rho: config.rho, cornerOrder: config.cornerOrder });
+    state.pending = state.stream.next();
+    state.segStart = { x: 0, y: config.rho };
+}
+
+// Position in the unit square at time τ (within the current segment).
+function positionAt(tau) {
+    const dt = tau - state.segTau;
+    return {
+        x: state.segStart.x + dt,
+        y: state.segStart.y + effectiveSlope() * dt
+    };
+}
+
+// x is the tube angle θ₁/2π, y is the major angle θ₂/2π
+function toXYZ(x, y) {
+    const theta1 = 2 * Math.PI * x;
+    const theta2 = 2 * Math.PI * y;
+    return {
+        x: (R + r * Math.cos(theta1)) * Math.cos(theta2),
+        y: (R + r * Math.cos(theta1)) * Math.sin(theta2),
+        z: r * Math.sin(theta1)
+    };
 }
 
 function project(x, y, z, rotX, rotY) {
@@ -155,13 +184,17 @@ canvas.addEventListener('touchend', () => {
 // Set initial cursor style
 canvas.style.cursor = 'grab';
 
+// Completed segments plus the partial one up to the particle.
+function traceSegments() {
+    const pos = positionAt(state.tau);
+    const current = { x0: state.segStart.x, y0: state.segStart.y, x1: pos.x, y1: pos.y };
+    return state.segments.concat([current]);
+}
+
 function draw() {
     // Clear canvas
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-    // No auto-rotation - torus angle controlled by mouse
-    // rotY += 0.005;  // Removed auto-rotation
 
     // Draw semi-transparent blue torus fill first
     ctx.fillStyle = 'rgba(59, 130, 246, 0.1)'; // Blue with 0.1 alpha
@@ -171,13 +204,10 @@ function draw() {
 
     // Generate torus mesh points
     for (let i = 0; i <= meshRes; i++) {
-        const u = (i / meshRes) * 2 * Math.PI;
         const row = [];
         for (let j = 0; j <= meshRes; j++) {
-            const v = (j / meshRes) * 2 * Math.PI;
-            const { x, y, z } = toXYZ(u, v);
-            const proj = project(x, y, z, rotX, rotY);
-            row.push(proj);
+            const { x, y, z } = toXYZ(i / meshRes, j / meshRes);
+            row.push(project(x, y, z, rotX, rotY));
         }
         torusPoints.push(row);
     }
@@ -221,34 +251,31 @@ function draw() {
         ctx.stroke();
     }
 
-    // Calculate current position
-    const effectiveTangent = config.useRatio ? (config.p / config.q) : config.tangent;
-    const theta1 = state.t;
-    const theta2 = effectiveTangent * state.t;
-
-    const { x, y, z } = toXYZ(theta1, theta2);
-    const pos = project(x, y, z, rotX, rotY);
-
-    // Draw trace if enabled
-    if (config.showTrace && state.tracePoints.length > 1) {
+    // Draw trace: each straight segment of the flat torus is a curve on the
+    // 3D torus, sampled finely enough to follow the surface
+    if (config.showTrace) {
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 2;
         ctx.beginPath();
-
-        for (let i = 0; i < state.tracePoints.length; i++) {
-            const tp = state.tracePoints[i];
-            const { x: tx, y: ty, z: tz } = toXYZ(tp.theta1, tp.theta2);
-            const tproj = project(tx, ty, tz, rotX, rotY);
-
-            if (i === 0) ctx.moveTo(tproj.x, tproj.y);
-            else ctx.lineTo(tproj.x, tproj.y);
+        for (const s of traceSegments()) {
+            const steps = Math.max(1, Math.ceil(Math.abs(s.x1 - s.x0) * 24 + Math.abs(s.y1 - s.y0) * 48));
+            for (let i = 0; i <= steps; i++) {
+                const f = i / steps;
+                const { x, y, z } = toXYZ(s.x0 + f * (s.x1 - s.x0), s.y0 + f * (s.y1 - s.y0));
+                const p = project(x, y, z, rotX, rotY);
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            }
         }
         ctx.stroke();
     }
 
     // Draw particle
+    const pos = positionAt(state.tau);
+    const { x, y, z } = toXYZ(pos.x, pos.y);
+    const proj = project(x, y, z, rotX, rotY);
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
+    ctx.arc(proj.x, proj.y, 5, 0, Math.PI * 2);
     ctx.fillStyle = state.completedCycle ? '#ef4444' : '#f59e0b';
     ctx.fill();
     ctx.strokeStyle = state.completedCycle ? '#f87171' : '#fbbf24';
@@ -260,97 +287,83 @@ function draw() {
 }
 
 function drawUnwrappedTorus() {
+    const rectWidth = UNWRAPPED_WIDTH - 2 * MARGIN;
+    const rectHeight = UNWRAPPED_HEIGHT - 2 * MARGIN;
+    // x = θ₁/2π to the right, y = θ₂/2π upward, so the path has slope α on screen
+    const toScreen = (x, y) => ({
+        x: MARGIN + x * rectWidth,
+        y: MARGIN + (1 - y) * rectHeight
+    });
+
     // Clear unwrapped canvas
     unwrappedCtx.fillStyle = '#0f172a';
     unwrappedCtx.fillRect(0, 0, UNWRAPPED_WIDTH, UNWRAPPED_HEIGHT);
 
     // Draw background rectangle with transparent blue
     unwrappedCtx.fillStyle = 'rgba(59, 130, 246, 0.1)';
-    unwrappedCtx.fillRect(30, 30, UNWRAPPED_WIDTH - 60, UNWRAPPED_HEIGHT - 60);
+    unwrappedCtx.fillRect(MARGIN, MARGIN, rectWidth, rectHeight);
 
     // Draw pink grid lines
     unwrappedCtx.strokeStyle = '#ec4899';
     unwrappedCtx.lineWidth = 0.5;
 
     const gridSize = 10;
-    const rectWidth = UNWRAPPED_WIDTH - 60;
-    const rectHeight = UNWRAPPED_HEIGHT - 60;
 
     // Vertical lines
     for (let i = 0; i <= gridSize; i++) {
-        const x = 30 + (i * rectWidth / gridSize);
+        const x = MARGIN + (i * rectWidth / gridSize);
         unwrappedCtx.beginPath();
-        unwrappedCtx.moveTo(x, 30);
-        unwrappedCtx.lineTo(x, UNWRAPPED_HEIGHT - 30);
+        unwrappedCtx.moveTo(x, MARGIN);
+        unwrappedCtx.lineTo(x, UNWRAPPED_HEIGHT - MARGIN);
         unwrappedCtx.stroke();
     }
 
     // Horizontal lines
     for (let i = 0; i <= gridSize; i++) {
-        const y = 30 + (i * rectHeight / gridSize);
+        const y = MARGIN + (i * rectHeight / gridSize);
         unwrappedCtx.beginPath();
-        unwrappedCtx.moveTo(30, y);
-        unwrappedCtx.lineTo(UNWRAPPED_WIDTH - 30, y);
+        unwrappedCtx.moveTo(MARGIN, y);
+        unwrappedCtx.lineTo(UNWRAPPED_WIDTH - MARGIN, y);
         unwrappedCtx.stroke();
     }
 
-    // Draw labels
+    // Draw axis labels
     unwrappedCtx.fillStyle = '#94a3b8';
     unwrappedCtx.font = '11px sans-serif';
-    unwrappedCtx.fillText('θ₂ (major) →', UNWRAPPED_WIDTH / 2 - 30, UNWRAPPED_HEIGHT - 10);
+    unwrappedCtx.textAlign = 'center';
+    unwrappedCtx.fillText('θ₁ (tube angle) →', UNWRAPPED_WIDTH / 2, UNWRAPPED_HEIGHT - 10);
     unwrappedCtx.save();
     unwrappedCtx.translate(15, UNWRAPPED_HEIGHT / 2);
     unwrappedCtx.rotate(-Math.PI / 2);
-    unwrappedCtx.fillText('θ₁ (minor) →', -30, 0);
+    unwrappedCtx.fillText('θ₂ (major angle) →', 0, 0);
     unwrappedCtx.restore();
 
-    // Draw trace on unwrapped view
-    if (config.showTrace && state.tracePoints.length > 1) {
+    // Label which edge emits which symbol
+    unwrappedCtx.font = 'bold 13px monospace';
+    unwrappedCtx.fillStyle = '#fbbf24';
+    unwrappedCtx.fillText('1', UNWRAPPED_WIDTH - MARGIN / 2, UNWRAPPED_HEIGHT / 2 + 4);
+    unwrappedCtx.fillText('0', UNWRAPPED_WIDTH / 2, MARGIN / 2 + 4);
+    unwrappedCtx.textAlign = 'start';
+
+    // Draw trace: straight segments between consecutive crossings
+    if (config.showTrace) {
         unwrappedCtx.strokeStyle = '#f59e0b';
         unwrappedCtx.lineWidth = 2;
         unwrappedCtx.beginPath();
-
-        for (let i = 0; i < state.tracePoints.length; i++) {
-            const tp = state.tracePoints[i];
-            // Map angles to rectangle coordinates
-            // θ₁ ranges from 0 to 2π → maps to vertical (y-axis)
-            // θ₂ ranges from 0 to 2π → maps to horizontal (x-axis)
-            const x = 30 + ((tp.theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
-            const y = 30 + ((tp.theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
-
-            if (i === 0) {
-                unwrappedCtx.moveTo(x, y);
-            } else {
-                const prevTp = state.tracePoints[i - 1];
-                const prevX = 30 + ((prevTp.theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
-                const prevY = 30 + ((prevTp.theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
-
-                // Handle wrapping - if the line would cross the boundary, don't draw it
-                const xDiff = Math.abs(x - prevX);
-                const yDiff = Math.abs(y - prevY);
-
-                if (xDiff < rectWidth * 0.5 && yDiff < rectHeight * 0.5) {
-                    unwrappedCtx.lineTo(x, y);
-                } else {
-                    unwrappedCtx.moveTo(x, y);
-                }
-            }
+        for (const s of traceSegments()) {
+            const a = toScreen(s.x0, s.y0);
+            const b = toScreen(s.x1, s.y1);
+            unwrappedCtx.moveTo(a.x, a.y);
+            unwrappedCtx.lineTo(b.x, b.y);
         }
         unwrappedCtx.stroke();
     }
 
-    // Calculate current position on unwrapped view
-    const effectiveTangent = config.useRatio ? (config.p / config.q) : config.tangent;
-    const theta1 = state.t;
-    const theta2 = effectiveTangent * state.t;
-
-    // Map to rectangle coordinates
-    const particleX = 30 + ((theta2 % (2 * Math.PI)) / (2 * Math.PI)) * rectWidth;
-    const particleY = 30 + ((theta1 % (2 * Math.PI)) / (2 * Math.PI)) * rectHeight;
-
     // Draw particle on unwrapped view
+    const pos = positionAt(state.tau);
+    const particle = toScreen(pos.x, pos.y);
     unwrappedCtx.beginPath();
-    unwrappedCtx.arc(particleX, particleY, 5, 0, Math.PI * 2);
+    unwrappedCtx.arc(particle.x, particle.y, 5, 0, Math.PI * 2);
     unwrappedCtx.fillStyle = state.completedCycle ? '#ef4444' : '#f59e0b';
     unwrappedCtx.fill();
     unwrappedCtx.strokeStyle = state.completedCycle ? '#f87171' : '#fbbf24';
@@ -361,92 +374,82 @@ function drawUnwrappedTorus() {
     unwrappedCtx.setLineDash([5, 5]);
     unwrappedCtx.strokeStyle = '#475569';
     unwrappedCtx.lineWidth = 1;
-    unwrappedCtx.strokeRect(30, 30, rectWidth, rectHeight);
+    unwrappedCtx.strokeRect(MARGIN, MARGIN, rectWidth, rectHeight);
     unwrappedCtx.setLineDash([]);
+}
+
+// Consume crossings in exact time order until targetTau or maxSymbols letters.
+// With stopAtPeriod, a rational path halts once it closes.
+function advance(targetTau, maxSymbols = Infinity, stopAtPeriod = true) {
+    const slope = effectiveSlope();
+    // A rational path closes after (p + q)/gcd crossings
+    const periodLength = (config.p + config.q) / gcd(config.p, config.q);
+    let added = '';
+
+    while (state.pending.tau <= targetTau && added.length < maxSymbols) {
+        const ev = state.pending;
+        const dt = ev.tau - state.segTau;
+        const end = {
+            x: Math.min(1, state.segStart.x + dt),
+            y: Math.min(1, state.segStart.y + slope * dt)
+        };
+        if (ev.symbol === '1') end.x = 1;
+        else end.y = 1;
+
+        if (end.x - state.segStart.x > 1e-12 || end.y - state.segStart.y > 1e-12) {
+            state.segments.push({ x0: state.segStart.x, y0: state.segStart.y, x1: end.x, y1: end.y });
+        }
+        state.segStart = {
+            x: ev.symbol === '1' ? 0 : end.x,
+            y: ev.symbol === '0' ? 0 : end.y
+        };
+        state.segTau = ev.tau;
+        state.tau = ev.tau;
+        state.pending = state.stream.next();
+        added += ev.symbol;
+
+        if (config.useRatio && ++state.symbolsInPeriod === periodLength) {
+            state.symbolsInPeriod = 0;
+            if (stopAtPeriod) {
+                state.completedCycle = true;
+                break;
+            }
+        }
+    }
+
+    if (state.segments.length > 2 * MAX_TRACE_SEGMENTS) {
+        state.segments = state.segments.slice(-MAX_TRACE_SEGMENTS);
+    }
+
+    if (added) appendSymbols(added);
 }
 
 function update() {
     if (!config.isRunning) return;
 
-    // Calculate desired time step based on speed
-    const targetDt = config.speed * 0.01;
+    const targetTau = state.tau + config.speed * 0.01 / (2 * Math.PI);
+    advance(targetTau);
+    if (!state.completedCycle) state.tau = targetTau;
+    if (state.completedCycle) handleStop();
+}
 
-    // Subdivide into smaller steps for smooth animation
-    // More subdivisions at higher speeds to maintain smoothness
-    const subdivisions = Math.ceil(config.speed / 10);
-    const subDt = targetDt / subdivisions;
-
-    for (let sub = 0; sub < subdivisions; sub++) {
-        // Update time parameter with smaller step
-        state.t += subDt;
-
-        // Calculate angles
-        const effectiveTangent = config.useRatio ? (config.p / config.q) : config.tangent;
-        const theta1 = state.t;
-        const theta2 = effectiveTangent * state.t;
-
-        // Check if we've completed a full cycle (only in rational mode)
-        if (config.useRatio && !state.completedCycle && state.initialized) {
-            const g = gcd(config.p, config.q);
-            const expectedT = 2 * Math.PI * config.q / g;
-
-            if (state.t >= expectedT) {
-                state.completedCycle = true;
-                state.t = expectedT;
-                handleStop();
-                break;
-            }
-        }
-
-        // Check for edge crossings
-        if (state.initialized) {
-            const currentTheta1Wraps = Math.floor(theta1 / (2 * Math.PI));
-            const lastTheta1Wraps = Math.floor(state.lastTheta1 / (2 * Math.PI));
-
-            const currentTheta2Wraps = Math.floor(theta2 / (2 * Math.PI));
-            const lastTheta2Wraps = Math.floor(state.lastTheta2 / (2 * Math.PI));
-
-            // Check theta1 crossing (minor circle)
-            if (currentTheta1Wraps > lastTheta1Wraps) {
-                config.sequence += '1';
-                updateSequenceDisplay();
-            }
-
-            // Check theta2 crossing (major circle)
-            if (currentTheta2Wraps > lastTheta2Wraps) {
-                config.sequence += '0';
-                updateSequenceDisplay();
-            }
-        } else {
-            state.initialized = true;
-        }
-
-        state.lastTheta1 = theta1;
-        state.lastTheta2 = theta2;
-
-        // Add to trace with controlled density
-        // At high speeds, don't add every single point to avoid memory issues
-        if (sub === subdivisions - 1 || config.speed < 20 || state.tracePoints.length === 0) {
-            state.tracePoints.push({ theta1, theta2 });
-
-            // Limit trace points to prevent memory issues
-            if (state.tracePoints.length > 5000) {
-                // Keep every nth point to maintain the overall shape
-                const keepRatio = Math.ceil(state.tracePoints.length / 2500);
-                state.tracePoints = state.tracePoints.filter((_, i) => i % keepRatio === 0);
-            }
-        }
-    }
+// Generate letters instantly, without animating them
+function fastForward(count) {
+    state.completedCycle = false;
+    advance(Infinity, count, false);
 }
 
 function animate() {
     update();
     draw();
+    renderAnalysis();
     animationId = requestAnimationFrame(animate);
 }
 
 // UI Event Handlers
 function handleStart() {
+    // After a closed rational period, Start runs the next period
+    state.completedCycle = false;
     config.isRunning = true;
     document.getElementById('startBtn').style.display = 'none';
     document.getElementById('stopBtn').style.display = 'flex';
@@ -483,15 +486,9 @@ function handleStop() {
 function handleReset() {
     handleStop();
     config.sequence = '';
-    resetNWords();
-    state = {
-        t: 0,
-        lastTheta1: 0,
-        lastTheta2: 0,
-        tracePoints: [],
-        initialized: false,
-        completedCycle: false
-    };
+    config.uniqueNWords.clear();
+    resetSimulation();
+    resetAnalysis();
     updateSequenceDisplay();
 }
 
@@ -511,6 +508,7 @@ function setMode(useRatio) {
         document.getElementById('irrationalPanel').style.display = 'block';
         document.getElementById('rationalPanel').style.display = 'none';
     }
+    handleReset();
 }
 
 function setTangent(value) {
@@ -519,6 +517,7 @@ function setTangent(value) {
     document.getElementById('tangentSlider').value = value;
     document.getElementById('tangentInput').value = value;
     document.getElementById('tangentValue').textContent = value.toFixed(6);
+    handleReset();
 }
 
 function setRatio(p, q) {
@@ -528,26 +527,44 @@ function setRatio(p, q) {
     document.getElementById('pInput').value = p;
     document.getElementById('qInput').value = q;
     updateRatioDisplay();
+    handleReset();
+}
+
+function setRho(value) {
+    if (config.isRunning) return;
+    config.rho = value;
+    document.getElementById('rhoSlider').value = value;
+    document.getElementById('rhoInput').value = value;
+    document.getElementById('rhoValue').textContent = value.toFixed(3);
+    handleReset();
 }
 
 function updateRatioDisplay() {
+    const g = gcd(config.p, config.q);
     const ratio = config.p / config.q;
+    const reduced = g > 1 ? ` = ${config.p / g}/${config.q / g}` : '';
     document.getElementById('ratioDisplay').textContent =
-        `${config.p}/${config.q} = ${ratio.toFixed(6)}`;
+        `${config.p}/${config.q}${reduced} = ${ratio.toFixed(6)}`;
 }
 
-function updateNWords() {
-    const sequence = config.sequence;
+// Add the factors ending at each newly appended symbol
+function appendSymbols(symbols) {
     const n = config.nWordsLength;
-    
-    if (sequence.length >= n) {
-        // Extract all n-words from the sequence
-        for (let i = 0; i <= sequence.length - n; i++) {
-            const nword = sequence.substring(i, i + n);
-            config.uniqueNWords.add(nword);
-        }
+    const start = config.sequence.length;
+    config.sequence += symbols;
+    feedAnalysis(symbols);
+    for (let end = Math.max(start + 1, n); end <= config.sequence.length; end++) {
+        config.uniqueNWords.add(config.sequence.substring(end - n, end));
     }
-    
+    updateSequenceDisplay();
+}
+
+function recomputeNWords() {
+    config.uniqueNWords.clear();
+    const n = config.nWordsLength;
+    for (let i = 0; i + n <= config.sequence.length; i++) {
+        config.uniqueNWords.add(config.sequence.substring(i, i + n));
+    }
     updateNWordsDisplay();
 }
 
@@ -555,7 +572,7 @@ function updateNWordsDisplay() {
     const nwordsArray = Array.from(config.uniqueNWords).sort();
     const nwordsOutput = document.getElementById('nwordsOutput');
     const nwordsCount = document.getElementById('nwordsCount');
-    
+
     if (nwordsArray.length === 0) {
         nwordsOutput.textContent = 'Press Start to begin...';
         nwordsCount.textContent = '0';
@@ -568,18 +585,11 @@ function updateNWordsDisplay() {
     }
 }
 
-function resetNWords() {
-    config.uniqueNWords.clear();
-    updateNWordsDisplay();
-}
-
 function updateSequenceDisplay() {
     document.getElementById('sequenceOutput').textContent =
         config.sequence || 'Press Start to begin...';
     document.getElementById('sequenceLength').textContent = config.sequence.length;
-    
-    // Update n-words when sequence changes
-    updateNWords();
+    updateNWordsDisplay();
 }
 
 function disableInputs(disabled) {
@@ -589,6 +599,9 @@ function disableInputs(disabled) {
     document.getElementById('tangentInput').disabled = disabled;
     document.getElementById('pInput').disabled = disabled;
     document.getElementById('qInput').disabled = disabled;
+    document.getElementById('rhoSlider').disabled = disabled;
+    document.getElementById('rhoInput').disabled = disabled;
+    document.getElementById('cornerOrder').disabled = disabled;
 
     const presetButtons = document.querySelectorAll('.preset-button');
     presetButtons.forEach(btn => btn.disabled = disabled);
@@ -600,6 +613,7 @@ document.getElementById('tangentSlider').addEventListener('input', (e) => {
     config.tangent = value;
     document.getElementById('tangentInput').value = value;
     document.getElementById('tangentValue').textContent = value.toFixed(6);
+    handleReset();
 });
 
 document.getElementById('tangentInput').addEventListener('input', (e) => {
@@ -608,6 +622,7 @@ document.getElementById('tangentInput').addEventListener('input', (e) => {
         config.tangent = value;
         document.getElementById('tangentSlider').value = Math.min(value, 10);
         document.getElementById('tangentValue').textContent = value.toFixed(6);
+        handleReset();
     }
 });
 
@@ -616,6 +631,7 @@ document.getElementById('pInput').addEventListener('input', (e) => {
     if (!isNaN(value) && value > 0) {
         config.p = value;
         updateRatioDisplay();
+        handleReset();
     }
 });
 
@@ -624,7 +640,22 @@ document.getElementById('qInput').addEventListener('input', (e) => {
     if (!isNaN(value) && value > 0) {
         config.q = value;
         updateRatioDisplay();
+        handleReset();
     }
+});
+
+document.getElementById('rhoSlider').addEventListener('input', (e) => {
+    setRho(parseFloat(e.target.value));
+});
+
+document.getElementById('rhoInput').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    if (!isNaN(value) && value >= 0 && value < 1) setRho(value);
+});
+
+document.getElementById('cornerOrder').addEventListener('change', (e) => {
+    config.cornerOrder = e.target.value;
+    handleReset();
 });
 
 document.getElementById('speedSlider').addEventListener('input', (e) => {
@@ -638,9 +669,7 @@ document.getElementById('showTrace').addEventListener('change', (e) => {
 
 document.getElementById('nwordsLength').addEventListener('change', (e) => {
     config.nWordsLength = parseInt(e.target.value);
-    // Reset and recalculate n-words with new length
-    resetNWords();
-    updateNWords();
+    recomputeNWords();
 });
 
 // Recording functions
@@ -712,6 +741,6 @@ function stopRecording() {
 
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Start animation loop
+    resetSimulation();
     animate();
 });
